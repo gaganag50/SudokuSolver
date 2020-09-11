@@ -18,12 +18,13 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 
+
 class MainActivity : AppCompatActivity() {
 
 
     val CAMERA_REQUEST_CODE = 0
+    private var digitClassifier = DigitClassifier(this)
 
-    val TAG = "MainActivity"
     private fun dispatchTakePictureIntent() {
         Intent(MediaStore.ACTION_IMAGE_CAPTURE).also { takePictureIntent ->
             // Ensure that there's a camera activity to handle the intent
@@ -57,12 +58,22 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        cameraButton.setOnClickListener{dispatchTakePictureIntent()}
+        cameraButton.setOnClickListener { dispatchTakePictureIntent() }
+
+
+        digitClassifier
+            .initialize()
+            .addOnFailureListener { e -> Log.e(TAG, "Error to setting up digit classifier.", e) }
+    }
+
+    override fun onDestroy() {
+        digitClassifier.close()
+        super.onDestroy()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        when(requestCode) {
+        when (requestCode) {
             CAMERA_REQUEST_CODE -> {
 /*                if(resultCode == Activity.RESULT_OK && data != null) {
                     photoImageView.setImageBitmap(data.extras.get("data") as Bitmap)
@@ -94,6 +105,7 @@ class MainActivity : AppCompatActivity() {
             currentPhotoPath = absolutePath
         }
     }
+
     private fun galleryAddPic() {
         Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).also { mediaScanIntent ->
             val f = File(currentPhotoPath)
@@ -101,6 +113,7 @@ class MainActivity : AppCompatActivity() {
             sendBroadcast(mediaScanIntent)
         }
     }
+
     fun setScaledBitmap(): Bitmap {
         val imageViewWidth = photoImageView.width
         val imageViewHeight = photoImageView.height
@@ -115,7 +128,7 @@ class MainActivity : AppCompatActivity() {
         val bitmapWidth = bmOptions.outWidth
         val bitmapHeight = bmOptions.outHeight
 
-        val scaleFactor = Math.min(bitmapWidth/imageViewWidth, bitmapHeight/imageViewHeight)
+        val scaleFactor = Math.min(bitmapWidth / imageViewWidth, bitmapHeight / imageViewHeight)
 
         bmOptions.inJustDecodeBounds = false
         bmOptions.inSampleSize = scaleFactor
@@ -123,4 +136,9 @@ class MainActivity : AppCompatActivity() {
         return BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
 
     }
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
+
 }
