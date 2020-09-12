@@ -13,6 +13,11 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
 import kotlinx.android.synthetic.main.activity_main.*
+import org.opencv.android.OpenCVLoader
+import org.opencv.android.Utils
+import org.opencv.core.CvType
+import org.opencv.core.Mat
+import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
@@ -57,7 +62,7 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-
+        OpenCVLoader.initDebug();
         cameraButton.setOnClickListener { dispatchTakePictureIntent() }
 
 
@@ -79,7 +84,12 @@ class MainActivity : AppCompatActivity() {
                     photoImageView.setImageBitmap(data.extras.get("data") as Bitmap)
                 }*/
                 if (resultCode == Activity.RESULT_OK) {
-                    photoImageView.setImageBitmap(setScaledBitmap())
+//                    val extras = data!!.extras
+//                    val imageBitmap = extras?.get("data") as Bitmap
+//                    Log.d(TAG, "onActivityResult: ${extras}")
+//                    Log.d(TAG, "onActivityResult: ${imageBitmap}")
+//                    photoImageView.setImageBitmap(setScaledBitmap())
+                    detectEdges(setScaledBitmap())
                 }
             }
             else -> {
@@ -106,14 +116,47 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun galleryAddPic() {
-        Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).also { mediaScanIntent ->
-            val f = File(currentPhotoPath)
-            mediaScanIntent.data = Uri.fromFile(f)
-            sendBroadcast(mediaScanIntent)
-        }
+
+
+    private fun detectEdges(bitmap: Bitmap) {
+        Log.d(TAG, "detectEdges: $bitmap")
+        val rgba = Mat()
+        Utils.bitmapToMat(bitmap, rgba)
+        Log.d(TAG, "detectEdges: ${rgba}")
+        val edges = Mat(rgba.size(), CvType.CV_8UC1)
+        Log.d(TAG, "detectEdges: ${edges}")
+        Imgproc.cvtColor(rgba, edges, Imgproc.COLOR_RGB2GRAY, 4)
+        Imgproc.Canny(edges, edges, 80.0, 100.0)
+
+        // Don't do that at home or work it's for visualization purpose.
+//        BitmapHelper.showBitmap(this, bitmap, imageView);
+        val resultBitmap =
+            Bitmap.createBitmap(edges.cols(), edges.rows(), Bitmap.Config.ARGB_8888)
+
+
+
+        Log.d(
+            TAG,
+            "detectEdges: ${bitmap.byteCount} ${bitmap.colorSpace} ${bitmap.density} ${bitmap.height} ${bitmap.width}"
+        )
+        Log . d (
+                TAG,
+        "detectEdges: ${resultBitmap.byteCount} ${resultBitmap.colorSpace} ${resultBitmap.density} ${resultBitmap.height} ${resultBitmap.width}"
+        )
+
+
+        Log.d(TAG, "detectEdges: $resultBitmap")
+        Utils.matToBitmap(edges, resultBitmap)
+        photoImageView.setImageBitmap(resultBitmap)
+//        BitmapHelper.showBitmap(this, resultBitmap, photoImageView);
     }
 
+
+
+
+    companion object {
+        private const val TAG = "MainActivity"
+    }
     fun setScaledBitmap(): Bitmap {
         val imageViewWidth = photoImageView.width
         val imageViewHeight = photoImageView.height
@@ -137,8 +180,13 @@ class MainActivity : AppCompatActivity() {
 
     }
 
-    companion object {
-        private const val TAG = "MainActivity"
+    private fun galleryAddPic() {
+        Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).also { mediaScanIntent ->
+            val f = File(currentPhotoPath)
+            mediaScanIntent.data = Uri.fromFile(f)
+            sendBroadcast(mediaScanIntent)
+        }
     }
+
 
 }
