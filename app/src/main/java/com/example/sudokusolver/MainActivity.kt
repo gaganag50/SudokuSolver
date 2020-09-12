@@ -23,6 +23,7 @@ import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
+import kotlin.math.log
 
 
 class MainActivity : AppCompatActivity() {
@@ -118,7 +119,99 @@ class MainActivity : AppCompatActivity() {
     }
 
 
+    private fun dist(a: Point, b: Point): Double {
+        val x1 = a.x
+        val y1 = a.y
+        val x2 = b.x
+        val y2 = b.y
+        return Math.sqrt(
+            Math.pow(x2 - x1.toDouble(), 2.0) +
+                    Math.pow(y2 - y1.toDouble(), 2.0) * 1.0
+        )
+    }
 
+    private fun order_points(pts: Array<Point>): MatOfPoint2f {
+        for (i in pts) {
+            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+        }
+
+        pts.sortBy { point -> point.x }
+        for (i in pts) {
+            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+        }
+        val leftMost = pts.take(2).toTypedArray()
+        val rightMost = pts.takeLast(2).toTypedArray()
+        for (i in leftMost) {
+            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+        }
+        for (i in rightMost) {
+            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+        }
+        leftMost.sortBy { point -> point.y }
+        Log.d(TAG, "order_points: ${leftMost[0]} ${leftMost[1]}")
+        Log.d(TAG, "order_points: ${rightMost[0]} ${rightMost[1]}")
+
+        val (tl, bl) = Pair(leftMost[0], leftMost[1])
+        val f = dist(tl, rightMost[0])
+        val s = dist(tl, rightMost[1])
+
+        return if (f < s) {
+            val (br, tr) = Pair(rightMost[1], rightMost[0])
+            MatOfPoint2f(tl, tr, br, bl)
+        } else {
+            val (br, tr) = Pair(rightMost[0], rightMost[1])
+            MatOfPoint2f(tl, tr, br, bl)
+        }
+    }
+
+    private fun four_point_transform(image: Mat, pts: Array<Point>): Mat {
+        val rect = order_points(pts)
+
+        val tl = rect.toArray()[0]
+        val tr = rect.toArray()[1]
+        val br = rect.toArray()[2]
+        val bl = rect.toArray()[3]
+
+        Log.d(TAG, "four_point_transform: $tl $tr $br $bl")
+
+        val widthA = Math.sqrt(Math.pow(br.x - bl.x, 2.0) + Math.pow(br.y - bl.y, 2.0))
+        val widthB = Math.sqrt(Math.pow(tr.x - tl.x, 2.0) + Math.pow(tr.y - tl.y, 2.0))
+        val maxWidth = Math.max(widthA.toInt(), widthB.toInt())
+
+
+        val heightA = Math.sqrt(Math.pow(tr.x - br.x, 2.0) + Math.pow(tr.y - br.y, 2.0))
+        val heightB = Math.sqrt(Math.pow(tl.x - bl.x, 2.0) + Math.pow(tl.y - bl.y, 2.0))
+        val maxHeight = Math.max(heightA.toInt(), heightB.toInt())
+
+
+        val dst: Mat = MatOfPoint2f(
+            Point(0.toDouble(), 0.toDouble()),
+            Point((maxWidth - 1).toDouble(), 0.toDouble()),
+            Point((maxWidth - 1).toDouble(), (maxHeight - 1).toDouble()),
+            Point(0.toDouble(), (maxHeight - 1).toDouble())
+        )
+
+        val transform = Imgproc.getPerspectiveTransform(rect, dst)
+        val warped: Mat = Mat()
+        Imgproc.warpPerspective(
+            image, warped, transform, Size(
+                maxWidth.toDouble(),
+                maxHeight.toDouble()
+            )
+        )
+        return warped
+
+    }
+
+    private fun show(thresh: Mat) {
+
+        val resultBitmap =
+            Bitmap.createBitmap(thresh.cols(), thresh.rows(), Bitmap.Config.ARGB_8888)
+        Log.d(TAG, "show: ${resultBitmap.colorSpace}")
+
+        Utils.matToBitmap(thresh, resultBitmap)
+        photoImageView.setImageBitmap(resultBitmap)
+    }
 
     private fun detectEdges(bitmap: Bitmap) {
         Log.d(TAG, "detectEdges: $bitmap")
@@ -141,13 +234,53 @@ class MainActivity : AppCompatActivity() {
         )
         Core.bitwise_not(thresh, thresh)
 
-        val resultBitmap =
-            Bitmap.createBitmap(thresh.cols(), thresh.rows(), Bitmap.Config.ARGB_8888)
 
-        Utils.matToBitmap(thresh, resultBitmap)
-        photoImageView.setImageBitmap(resultBitmap)
+        // contours will contain all the contours as vectors with coordinates
+        // hierarchy->
+        val contours: MutableList<MatOfPoint> = ArrayList()
+        val hierarchy = Mat()
 
 
+        Imgproc.findContours(
+            thresh,
+            contours,
+            hierarchy,
+            Imgproc.RETR_TREE,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
+
+        contours.sortByDescending { Imgproc.contourArea(it) }
+
+        var isP = false
+        for (c in contours) {
+            val c2f = MatOfPoint2f(*c.toArray())
+            val peri = Imgproc.arcLength(c2f, true)
+            val approx = MatOfPoint2f()
+            Imgproc.approxPolyDP(c2f, approx, 0.02 * peri, true)
+
+            // select biggest 4 angles polygon
+            if (approx.toArray().size == 4) {
+                isP = true
+                val puzzleCnt = approx.toArray()
+                Log.d(TAG, "detectEdges2222: ${puzzleCnt.size}")
+                Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(0)}")
+                Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(1)}")
+                Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(2)}")
+                val puzzle = four_point_transform(rgba, puzzleCnt)
+                val warped = four_point_transform(gray, puzzleCnt)
+                show(puzzle)
+                break
+            }
+        }
+        if (!isP) {
+            Toast.makeText(
+                applicationContext,
+                "This is a message displayed in a Toast",
+                Toast.LENGTH_SHORT
+            ).show()
+
+
+        }
 
 
     }
