@@ -15,13 +15,14 @@ import androidx.core.content.FileProvider
 import kotlinx.android.synthetic.main.activity_main.*
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
-import org.opencv.core.CvType
-import org.opencv.core.Mat
+import org.opencv.core.*
+import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
+import kotlin.collections.ArrayList
 
 
 class MainActivity : AppCompatActivity() {
@@ -118,45 +119,44 @@ class MainActivity : AppCompatActivity() {
 
 
 
+
     private fun detectEdges(bitmap: Bitmap) {
         Log.d(TAG, "detectEdges: $bitmap")
         val rgba = Mat()
         Utils.bitmapToMat(bitmap, rgba)
         Log.d(TAG, "detectEdges: ${rgba}")
-        val edges = Mat(rgba.size(), CvType.CV_8UC1)
-        Log.d(TAG, "detectEdges: ${edges}")
-        Imgproc.cvtColor(rgba, edges, Imgproc.COLOR_RGB2GRAY, 4)
-        Imgproc.Canny(edges, edges, 80.0, 100.0)
+        val gray = Mat(rgba.size(), CvType.CV_8UC1)
+        val blurred = Mat(rgba.size(), CvType.CV_8UC1)
+        val thresh = Mat(rgba.size(), CvType.CV_8UC1)
+        Imgproc.cvtColor(rgba, gray, Imgproc.COLOR_RGB2GRAY, 4)
+        Imgproc.GaussianBlur(gray, blurred, Size(7.0, 7.0), 3.0)
+        Imgproc.adaptiveThreshold(
+            blurred,
+            thresh,
+            255.0,
+            Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C,
+            Imgproc.THRESH_BINARY,
+            11,
+            2.0
+        )
+        Core.bitwise_not(thresh, thresh)
 
-        // Don't do that at home or work it's for visualization purpose.
-//        BitmapHelper.showBitmap(this, bitmap, imageView);
         val resultBitmap =
-            Bitmap.createBitmap(edges.cols(), edges.rows(), Bitmap.Config.ARGB_8888)
+            Bitmap.createBitmap(thresh.cols(), thresh.rows(), Bitmap.Config.ARGB_8888)
 
-
-
-        Log.d(
-            TAG,
-            "detectEdges: ${bitmap.byteCount} ${bitmap.colorSpace} ${bitmap.density} ${bitmap.height} ${bitmap.width}"
-        )
-        Log . d (
-                TAG,
-        "detectEdges: ${resultBitmap.byteCount} ${resultBitmap.colorSpace} ${resultBitmap.density} ${resultBitmap.height} ${resultBitmap.width}"
-        )
-
-
-        Log.d(TAG, "detectEdges: $resultBitmap")
-        Utils.matToBitmap(edges, resultBitmap)
+        Utils.matToBitmap(thresh, resultBitmap)
         photoImageView.setImageBitmap(resultBitmap)
-//        BitmapHelper.showBitmap(this, resultBitmap, photoImageView);
+
+
+
+
     }
-
-
 
 
     companion object {
         private const val TAG = "MainActivity"
     }
+
     fun setScaledBitmap(): Bitmap {
         val imageViewWidth = photoImageView.width
         val imageViewHeight = photoImageView.height
@@ -164,10 +164,10 @@ class MainActivity : AppCompatActivity() {
         val bmOptions = BitmapFactory.Options()
         bmOptions.inJustDecodeBounds = true
         BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
-        Log.d(
-            TAG,
-            "setScaledBitmap: ${bmOptions.inBitmap} ${bmOptions.inDensity} ${bmOptions.outColorSpace}"
-        )
+//        Log.d(
+//            TAG,
+//            "setScaledBitmap: ${bmOptions.inBitmap} ${bmOptions.inDensity} ${bmOptions.outColorSpace}"
+//        )
         val bitmapWidth = bmOptions.outWidth
         val bitmapHeight = bmOptions.outHeight
 
