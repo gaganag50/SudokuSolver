@@ -16,14 +16,12 @@ import kotlinx.android.synthetic.main.activity_main.*
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
 import org.opencv.core.*
-import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.*
 import kotlin.collections.ArrayList
-import kotlin.math.log
 
 
 class MainActivity : AppCompatActivity() {
@@ -207,11 +205,52 @@ class MainActivity : AppCompatActivity() {
 
         val resultBitmap =
             Bitmap.createBitmap(thresh.cols(), thresh.rows(), Bitmap.Config.ARGB_8888)
-        Log.d(TAG, "show: ${resultBitmap.colorSpace}")
 
         Utils.matToBitmap(thresh, resultBitmap)
         photoImageView.setImageBitmap(resultBitmap)
     }
+
+    private fun extract_digit(cell: Mat): Mat? {
+        val thresh = Mat(cell.size(), CvType.CV_8UC1)
+        Imgproc.threshold(cell, thresh, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+
+
+        val contours: MutableList<MatOfPoint> = ArrayList()
+        val hierarchy = Mat()
+        Imgproc.findContours(
+            thresh,
+            contours,
+            hierarchy,
+            Imgproc.RETR_EXTERNAL,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
+
+
+        if (contours.isNotEmpty()) {
+
+
+            val c = contours.maxBy { Imgproc.contourArea(it) }
+            val mask = Mat(thresh.size(), 0)
+
+
+            val C: List<MatOfPoint?> = listOf(c)
+            Imgproc.drawContours(mask, C, -1, Scalar(255.0, 0.0, 0.0), -1)
+
+            val h = thresh.size().height
+            val w = thresh.size().width
+            val percentFilled = Core.countNonZero(mask) / (h * w)
+            if (percentFilled >= 0.03) {
+                val digit: Mat = Mat(thresh.size(), 0)
+                Core.bitwise_and(thresh, thresh, digit, mask)
+                show(digit)
+                return digit
+            }
+
+        }
+        return null
+    }
+
+
 
     private fun detectEdges(bitmap: Bitmap) {
         Log.d(TAG, "detectEdges: $bitmap")
