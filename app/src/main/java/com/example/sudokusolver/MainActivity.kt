@@ -84,12 +84,7 @@ class MainActivity : AppCompatActivity() {
                     photoImageView.setImageBitmap(data.extras.get("data") as Bitmap)
                 }*/
                 if (resultCode == Activity.RESULT_OK) {
-//                    val extras = data!!.extras
-//                    val imageBitmap = extras?.get("data") as Bitmap
-//                    Log.d(TAG, "onActivityResult: ${extras}")
-//                    Log.d(TAG, "onActivityResult: ${imageBitmap}")
-//                    photoImageView.setImageBitmap(setScaledBitmap())
-                    detectEdges(setScaledBitmap())
+                    solve_sudoku_puzzle()
                 }
             }
             else -> {
@@ -129,25 +124,25 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun order_points(pts: Array<Point>): MatOfPoint2f {
-        for (i in pts) {
-            Log.d(TAG, "order_points: ${i.x} ${i.y}")
-        }
+//        for (i in pts) {
+//            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+//        }
 
         pts.sortBy { point -> point.x }
-        for (i in pts) {
-            Log.d(TAG, "order_points: ${i.x} ${i.y}")
-        }
+//        for (i in pts) {
+//            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+//        }
         val leftMost = pts.take(2).toTypedArray()
         val rightMost = pts.takeLast(2).toTypedArray()
-        for (i in leftMost) {
-            Log.d(TAG, "order_points: ${i.x} ${i.y}")
-        }
-        for (i in rightMost) {
-            Log.d(TAG, "order_points: ${i.x} ${i.y}")
-        }
+//        for (i in leftMost) {
+//            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+//        }
+//        for (i in rightMost) {
+//            Log.d(TAG, "order_points: ${i.x} ${i.y}")
+//        }
         leftMost.sortBy { point -> point.y }
-        Log.d(TAG, "order_points: ${leftMost[0]} ${leftMost[1]}")
-        Log.d(TAG, "order_points: ${rightMost[0]} ${rightMost[1]}")
+//        Log.d(TAG, "order_points: ${leftMost[0]} ${leftMost[1]}")
+//        Log.d(TAG, "order_points: ${rightMost[0]} ${rightMost[1]}")
 
         val (tl, bl) = Pair(leftMost[0], leftMost[1])
         val f = dist(tl, rightMost[0])
@@ -210,10 +205,66 @@ class MainActivity : AppCompatActivity() {
         photoImageView.setImageBitmap(resultBitmap)
     }
 
-    private fun extract_digit(cell: Mat): Mat? {
-        val thresh = Mat(cell.size(), CvType.CV_8UC1)
-        Imgproc.threshold(cell, thresh, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
 
+    private fun extract_digit(cell: Mat): Mat? {
+        var thresh = Mat(cell.size(), CvType.CV_8UC1)
+        Imgproc.threshold(cell, thresh, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+        val copy = thresh.clone()
+        val vcopy = thresh.clone()
+
+        // closing->remove internal noise
+        // opening-> erosion and then dilation
+
+
+        // Remove horizontal lines
+        val horizontal_kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(100.0, 1.0))
+        val remove_horizontal: Mat = Mat()
+
+
+        Imgproc.morphologyEx(thresh, remove_horizontal, Imgproc.MORPH_OPEN, horizontal_kernel)
+
+
+        val hcontours: MutableList<MatOfPoint> = ArrayList()
+        val hhierarchy = Mat()
+
+
+        Imgproc.findContours(
+            remove_horizontal,
+            hcontours,
+            hhierarchy,
+            Imgproc.RETR_EXTERNAL,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
+        for (hc in hcontours) {
+            Imgproc.drawContours(copy, listOf(hc), -1, Scalar(0.0, 0.0, 0.0), 5)
+        }
+
+
+        val vertical_kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, 100.0))
+        val remove_vertical = Mat()
+        val vcontours: MutableList<MatOfPoint> = ArrayList()
+        val vhierarchy = Mat()
+        Imgproc.morphologyEx(vcopy, remove_vertical, Imgproc.MORPH_OPEN, vertical_kernel)
+
+        Imgproc.findContours(
+            remove_vertical,
+            vcontours, vhierarchy,
+            Imgproc.RETR_EXTERNAL,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
+        for (vc in vcontours) {
+            Imgproc.drawContours(copy, listOf(vc), -1, Scalar(0.0, 0.0, 0.0), 5)
+        }
+
+
+        thresh = copy
+
+
+//        erode the frame
+        val open_element = Imgproc.getStructuringElement(Imgproc.MORPH_OPEN, Size(3.0, 3.0))
+        Imgproc.erode(thresh, thresh, open_element)
+
+//        return thresh
 
         val contours: MutableList<MatOfPoint> = ArrayList()
         val hierarchy = Mat()
@@ -230,19 +281,18 @@ class MainActivity : AppCompatActivity() {
 
 
             val c = contours.maxBy { Imgproc.contourArea(it) }
-            val mask = Mat(thresh.size(), 0)
+            val mask = Mat.zeros(thresh.size(), CvType.CV_8UC1)
 
 
-            val C: List<MatOfPoint?> = listOf(c)
-            Imgproc.drawContours(mask, C, -1, Scalar(255.0, 0.0, 0.0), -1)
+            Imgproc.drawContours(mask, listOf(c), -1, Scalar(255.0, 0.0, 0.0), -1)
 
             val h = thresh.size().height
             val w = thresh.size().width
             val percentFilled = Core.countNonZero(mask) / (h * w)
             if (percentFilled >= 0.03) {
-                val digit: Mat = Mat(thresh.size(), 0)
+                val digit: Mat = Mat.zeros(thresh.size(), CvType.CV_8UC1)
                 Core.bitwise_and(thresh, thresh, digit, mask)
-                show(digit)
+
                 return digit
             }
 
@@ -250,13 +300,13 @@ class MainActivity : AppCompatActivity() {
         return null
     }
 
+    private fun find_puzzle(bitmap: Bitmap): Pair<Mat, Mat>? {
 
 
-    private fun detectEdges(bitmap: Bitmap) {
-        Log.d(TAG, "detectEdges: $bitmap")
+        Log.d(TAG, "find_puzzle: $bitmap")
         val rgba = Mat()
         Utils.bitmapToMat(bitmap, rgba)
-        Log.d(TAG, "detectEdges: ${rgba}")
+        Log.d(TAG, "find_puzzle: ${rgba}")
         val gray = Mat(rgba.size(), CvType.CV_8UC1)
         val blurred = Mat(rgba.size(), CvType.CV_8UC1)
         val thresh = Mat(rgba.size(), CvType.CV_8UC1)
@@ -290,7 +340,7 @@ class MainActivity : AppCompatActivity() {
 
         contours.sortByDescending { Imgproc.contourArea(it) }
 
-        var isP = false
+
         for (c in contours) {
             val c2f = MatOfPoint2f(*c.toArray())
             val peri = Imgproc.arcLength(c2f, true)
@@ -299,7 +349,7 @@ class MainActivity : AppCompatActivity() {
 
             // select biggest 4 angles polygon
             if (approx.toArray().size == 4) {
-                isP = true
+
                 val puzzleCnt = approx.toArray()
                 Log.d(TAG, "detectEdges2222: ${puzzleCnt.size}")
                 Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(0)}")
@@ -308,20 +358,89 @@ class MainActivity : AppCompatActivity() {
                 val puzzle = four_point_transform(rgba, puzzleCnt)
                 val warped = four_point_transform(gray, puzzleCnt)
                 show(puzzle)
-                break
+                return Pair(puzzle, warped)
+
             }
         }
-        if (!isP) {
-            Toast.makeText(
-                applicationContext,
-                "This is a message displayed in a Toast",
-                Toast.LENGTH_SHORT
-            ).show()
+        Toast.makeText(
+            applicationContext,
+            "This is a message displayed in a Toast",
+            Toast.LENGTH_SHORT
+        ).show()
 
 
+        return null
+
+    }
+
+
+    private fun solve_sudoku_puzzle() {
+
+        val (puzzleImage, warped) = find_puzzle(setScaledBitmap())!!
+        val board = Array(9) { IntArray(9) }
+        val stepX = warped.width() / 9
+        val stepY = warped.height() / 9
+        var cnt = 0
+        for (y in 0..8) {
+            for (x in 0..8) {
+                val startX = x * stepX
+                val startY = y * stepY
+                val endX = (x + 1) * stepX
+                val endY = (y + 1) * stepY
+
+
+                var roi: Rect? = Rect(
+                    Point(startX.toDouble(), startY.toDouble()), Point(
+                        endX.toDouble(),
+                        endY.toDouble()
+                    )
+                )
+                val cell = Mat(warped, roi)
+
+                val digit = extract_digit(cell)
+
+                if (digit != null) {
+                    Log.d(TAG, "solve_sudoku_puzzle: gagan")
+
+                    cnt = cnt + 1
+                    val roi = Mat()
+                    Imgproc.resize(digit, roi, Size(28.0, 28.0))
+
+
+                    val bitmap =
+                        Bitmap.createBitmap(roi.cols(), roi.rows(), Bitmap.Config.ARGB_8888)
+
+                    Utils.matToBitmap(roi, bitmap)
+
+
+                    if ((bitmap != null) && (digitClassifier.isInitialized)) {
+                        digitClassifier
+                            .classifyAsync(bitmap)
+                            .addOnSuccessListener { resultText ->
+
+
+                                Log.d(TAG, "solve_sudoku_puzzle: $resultText")
+
+                            }
+                            .addOnFailureListener { e ->
+                                Log.e(TAG, "Error classifying drawing.", e)
+                            }
+                    }
+
+
+                } else {
+                    Log.d(TAG, "solve_sudoku_puzzle: hello")
+                }
+            }
         }
 
-
+//        for (row in 0 until board.size) {
+//            for (col in 0 until board[row].size) {
+//
+//                print(board[row][col].toString() + "\t")
+//            }
+//            println()
+//        }
     }
 
 
@@ -336,10 +455,6 @@ class MainActivity : AppCompatActivity() {
         val bmOptions = BitmapFactory.Options()
         bmOptions.inJustDecodeBounds = true
         BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
-//        Log.d(
-//            TAG,
-//            "setScaledBitmap: ${bmOptions.inBitmap} ${bmOptions.inDensity} ${bmOptions.outColorSpace}"
-//        )
         val bitmapWidth = bmOptions.outWidth
         val bitmapHeight = bmOptions.outHeight
 
