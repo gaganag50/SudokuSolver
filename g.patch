@@ -1,0 +1,312 @@
+diff --git a/.idea/codeStyles/Project.xml b/.idea/codeStyles/Project.xml
+index 88ea3aa..3cc336b 100644
+--- a/.idea/codeStyles/Project.xml
++++ b/.idea/codeStyles/Project.xml
+@@ -1,6 +1,22 @@
+ <component name="ProjectCodeStyleConfiguration">
+   <code_scheme name="Project" version="173">
+     <JetCodeStyleSettings>
++      <option name="PACKAGES_TO_USE_STAR_IMPORTS">
++        <value>
++          <package name="java.util" alias="false" withSubpackages="false" />
++          <package name="kotlinx.android.synthetic" alias="false" withSubpackages="true" />
++          <package name="io.ktor" alias="false" withSubpackages="true" />
++        </value>
++      </option>
++      <option name="PACKAGES_IMPORT_LAYOUT">
++        <value>
++          <package name="" alias="false" withSubpackages="true" />
++          <package name="java" alias="false" withSubpackages="true" />
++          <package name="javax" alias="false" withSubpackages="true" />
++          <package name="kotlin" alias="false" withSubpackages="true" />
++          <package name="" alias="true" withSubpackages="true" />
++        </value>
++      </option>
+       <option name="CODE_STYLE_DEFAULTS" value="KOTLIN_OFFICIAL" />
+     </JetCodeStyleSettings>
+     <codeStyleSettings language="XML">
+diff --git a/app/src/main/java/com/example/sudokusolver/MainActivity.kt b/app/src/main/java/com/example/sudokusolver/MainActivity.kt
+index a26d5d0..3789eab 100644
+--- a/app/src/main/java/com/example/sudokusolver/MainActivity.kt
++++ b/app/src/main/java/com/example/sudokusolver/MainActivity.kt
+@@ -30,6 +30,125 @@ class MainActivity : AppCompatActivity() {
+     val CAMERA_REQUEST_CODE = 0
+     private var digitClassifier = DigitClassifier(this)
+ 
++
++
++
++
++
++
++
++
++    private fun show(thresh: Mat) {
++
++        val resultBitmap =
++            Bitmap.createBitmap(thresh.cols(), thresh.rows(), Bitmap.Config.ARGB_8888)
++
++        Utils.matToBitmap(thresh, resultBitmap)
++        photoImageView.setImageBitmap(resultBitmap)
++    }
++
++
++
++
++
++    private fun solve_sudoku_puzzle() {
++
++        val (puzzleImage, warped) = find_puzzle(setScaledBitmap())!!
++        val board = Array(9) { IntArray(9) }
++        val stepX = warped.width() / 9
++        val stepY = warped.height() / 9
++        var cnt = 0
++        for (y in 0..8) {
++            for (x in 0..8) {
++                val startX = x * stepX
++                val startY = y * stepY
++                val endX = (x + 1) * stepX
++                val endY = (y + 1) * stepY
++
++
++                var roi: Rect? = Rect(
++                    Point(startX.toDouble(), startY.toDouble()), Point(
++                        endX.toDouble(),
++                        endY.toDouble()
++                    )
++                )
++                val cell = Mat(warped, roi)
++
++                val digit = extract_digit(cell)
++
++                if (digit != null) {
++                    Log.d(TAG, "solve_sudoku_puzzle: gagan")
++//                    if (cnt == 20) {
++                    show(digit)
++//                        return
++//                    }
++                    cnt = cnt + 1
++                    val roi = Mat()
++                    Imgproc.resize(digit, roi, Size(28.0, 28.0))
++
++
++                    val bitmap =
++                        Bitmap.createBitmap(roi.cols(), roi.rows(), Bitmap.Config.ARGB_8888)
++
++                    Utils.matToBitmap(roi, bitmap)
++
++
++                    if ((bitmap != null) && (digitClassifier.isInitialized)) {
++                        digitClassifier
++                            .classifyAsync(bitmap)
++                            .addOnSuccessListener { resultText ->
++
++                                val arrOfStr =
++                                    resultText.split("\\s+".toRegex())
++                                        .toTypedArray()
++                                Log.d(TAG, "solve_sudoku_puzzle: ${arrOfStr[2].toInt()}")
++                                board[y][x] = arrOfStr[2].toInt()
++                            }
++                            .addOnFailureListener { e ->
++                                Log.e(TAG, "Error classifying drawing.", e)
++                            }
++                    }
++
++
++                } else {
++                    Log.d(TAG, "solve_sudoku_puzzle: hello")
++                }
++            }
++        }
++
++        for (row in 0 until board.size) {
++            for (col in 0 until board[row].size) {
++
++                Log.d(TAG, "solve_sudoku_puzz0000000000000000000le: ${board[row][col].toString()}")
++            }
++        }
++    }
++
++
++    companion object {
++        private const val TAG = "MainActivity"
++    }
++
++    fun setScaledBitmap(): Bitmap {
++        val imageViewWidth = photoImageView.width
++        val imageViewHeight = photoImageView.height
++
++        val bmOptions = BitmapFactory.Options()
++        bmOptions.inJustDecodeBounds = true
++        BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
++        val bitmapWidth = bmOptions.outWidth
++        val bitmapHeight = bmOptions.outHeight
++
++        val scaleFactor = Math.min(bitmapWidth / imageViewWidth, bitmapHeight / imageViewHeight)
++
++        bmOptions.inJustDecodeBounds = false
++        bmOptions.inSampleSize = scaleFactor
++
++        return BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
++
++    }
++
++
+     private fun dispatchTakePictureIntent() {
+         Intent(MediaStore.ACTION_IMAGE_CAPTURE).also { takePictureIntent ->
+             // Ensure that there's a camera activity to handle the intent
+@@ -75,7 +194,6 @@ class MainActivity : AppCompatActivity() {
+         digitClassifier.close()
+         super.onDestroy()
+     }
+-
+     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+         super.onActivityResult(requestCode, resultCode, data)
+         when (requestCode) {
+@@ -93,6 +211,7 @@ class MainActivity : AppCompatActivity() {
+         }
+     }
+ 
++
+     lateinit var currentPhotoPath: String
+ 
+     @Throws(IOException::class)
+@@ -112,6 +231,20 @@ class MainActivity : AppCompatActivity() {
+     }
+ 
+ 
++
++
++
++
++
++
++
++
++
++
++
++
++
++
+     private fun dist(a: Point, b: Point): Double {
+         val x1 = a.x
+         val y1 = a.y
+@@ -196,16 +329,6 @@ class MainActivity : AppCompatActivity() {
+ 
+     }
+ 
+-    private fun show(thresh: Mat) {
+-
+-        val resultBitmap =
+-            Bitmap.createBitmap(thresh.cols(), thresh.rows(), Bitmap.Config.ARGB_8888)
+-
+-        Utils.matToBitmap(thresh, resultBitmap)
+-        photoImageView.setImageBitmap(resultBitmap)
+-    }
+-
+-
+     private fun extract_digit(cell: Mat): Mat? {
+         var thresh = Mat(cell.size(), CvType.CV_8UC1)
+         Imgproc.threshold(cell, thresh, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
+@@ -373,100 +496,6 @@ class MainActivity : AppCompatActivity() {
+ 
+     }
+ 
+-
+-    private fun solve_sudoku_puzzle() {
+-
+-        val (puzzleImage, warped) = find_puzzle(setScaledBitmap())!!
+-        val board = Array(9) { IntArray(9) }
+-        val stepX = warped.width() / 9
+-        val stepY = warped.height() / 9
+-        var cnt = 0
+-        for (y in 0..8) {
+-            for (x in 0..8) {
+-                val startX = x * stepX
+-                val startY = y * stepY
+-                val endX = (x + 1) * stepX
+-                val endY = (y + 1) * stepY
+-
+-
+-                var roi: Rect? = Rect(
+-                    Point(startX.toDouble(), startY.toDouble()), Point(
+-                        endX.toDouble(),
+-                        endY.toDouble()
+-                    )
+-                )
+-                val cell = Mat(warped, roi)
+-
+-                val digit = extract_digit(cell)
+-
+-                if (digit != null) {
+-                    Log.d(TAG, "solve_sudoku_puzzle: gagan")
+-
+-                    cnt = cnt + 1
+-                    val roi = Mat()
+-                    Imgproc.resize(digit, roi, Size(28.0, 28.0))
+-
+-
+-                    val bitmap =
+-                        Bitmap.createBitmap(roi.cols(), roi.rows(), Bitmap.Config.ARGB_8888)
+-
+-                    Utils.matToBitmap(roi, bitmap)
+-
+-
+-                    if ((bitmap != null) && (digitClassifier.isInitialized)) {
+-                        digitClassifier
+-                            .classifyAsync(bitmap)
+-                            .addOnSuccessListener { resultText ->
+-
+-
+-                                Log.d(TAG, "solve_sudoku_puzzle: $resultText")
+-
+-                            }
+-                            .addOnFailureListener { e ->
+-                                Log.e(TAG, "Error classifying drawing.", e)
+-                            }
+-                    }
+-
+-
+-                } else {
+-                    Log.d(TAG, "solve_sudoku_puzzle: hello")
+-                }
+-            }
+-        }
+-
+-//        for (row in 0 until board.size) {
+-//            for (col in 0 until board[row].size) {
+-//
+-//                print(board[row][col].toString() + "\t")
+-//            }
+-//            println()
+-//        }
+-    }
+-
+-
+-    companion object {
+-        private const val TAG = "MainActivity"
+-    }
+-
+-    fun setScaledBitmap(): Bitmap {
+-        val imageViewWidth = photoImageView.width
+-        val imageViewHeight = photoImageView.height
+-
+-        val bmOptions = BitmapFactory.Options()
+-        bmOptions.inJustDecodeBounds = true
+-        BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
+-        val bitmapWidth = bmOptions.outWidth
+-        val bitmapHeight = bmOptions.outHeight
+-
+-        val scaleFactor = Math.min(bitmapWidth / imageViewWidth, bitmapHeight / imageViewHeight)
+-
+-        bmOptions.inJustDecodeBounds = false
+-        bmOptions.inSampleSize = scaleFactor
+-
+-        return BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
+-
+-    }
+-
+     private fun galleryAddPic() {
+         Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).also { mediaScanIntent ->
+             val f = File(currentPhotoPath)

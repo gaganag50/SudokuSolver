@@ -205,104 +205,14 @@ class MainActivity : AppCompatActivity() {
         photoImageView.setImageBitmap(resultBitmap)
     }
 
-
-    private fun extract_digit(cell: Mat): Mat? {
-        var thresh = Mat(cell.size(), CvType.CV_8UC1)
-        Imgproc.threshold(cell, thresh, 0.0, 255.0, Imgproc.THRESH_BINARY_INV + Imgproc.THRESH_OTSU)
-        val copy = thresh.clone()
-        val vcopy = thresh.clone()
-
-        // closing->remove internal noise
-        // opening-> erosion and then dilation
+    private fun show(bitmap: Bitmap?) = bitmap?.let {
 
 
-        // Remove horizontal lines
-        val horizontal_kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(100.0, 1.0))
-        val remove_horizontal: Mat = Mat()
-
-
-        Imgproc.morphologyEx(thresh, remove_horizontal, Imgproc.MORPH_OPEN, horizontal_kernel)
-
-
-        val hcontours: MutableList<MatOfPoint> = ArrayList()
-        val hhierarchy = Mat()
-
-
-        Imgproc.findContours(
-            remove_horizontal,
-            hcontours,
-            hhierarchy,
-            Imgproc.RETR_EXTERNAL,
-            Imgproc.CHAIN_APPROX_SIMPLE
-        )
-        for (hc in hcontours) {
-            Imgproc.drawContours(copy, listOf(hc), -1, Scalar(0.0, 0.0, 0.0), 5)
-        }
-
-
-        val vertical_kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(1.0, 100.0))
-        val remove_vertical = Mat()
-        val vcontours: MutableList<MatOfPoint> = ArrayList()
-        val vhierarchy = Mat()
-        Imgproc.morphologyEx(vcopy, remove_vertical, Imgproc.MORPH_OPEN, vertical_kernel)
-
-        Imgproc.findContours(
-            remove_vertical,
-            vcontours, vhierarchy,
-            Imgproc.RETR_EXTERNAL,
-            Imgproc.CHAIN_APPROX_SIMPLE
-        )
-        for (vc in vcontours) {
-            Imgproc.drawContours(copy, listOf(vc), -1, Scalar(0.0, 0.0, 0.0), 5)
-        }
-
-
-        thresh = copy
-
-
-//        erode the frame
-        val open_element = Imgproc.getStructuringElement(Imgproc.MORPH_OPEN, Size(3.0, 3.0))
-        Imgproc.erode(thresh, thresh, open_element)
-
-//        return thresh
-
-        val contours: MutableList<MatOfPoint> = ArrayList()
-        val hierarchy = Mat()
-        Imgproc.findContours(
-            thresh,
-            contours,
-            hierarchy,
-            Imgproc.RETR_EXTERNAL,
-            Imgproc.CHAIN_APPROX_SIMPLE
-        )
-
-
-        if (contours.isNotEmpty()) {
-
-
-            val c = contours.maxBy { Imgproc.contourArea(it) }
-            val mask = Mat.zeros(thresh.size(), CvType.CV_8UC1)
-
-
-            Imgproc.drawContours(mask, listOf(c), -1, Scalar(255.0, 0.0, 0.0), -1)
-
-            val h = thresh.size().height
-            val w = thresh.size().width
-            val percentFilled = Core.countNonZero(mask) / (h * w)
-            if (percentFilled >= 0.03) {
-                val digit: Mat = Mat.zeros(thresh.size(), CvType.CV_8UC1)
-                Core.bitwise_and(thresh, thresh, digit, mask)
-
-                return digit
-            }
-
-        }
-        return null
+        photoImageView.setImageBitmap(bitmap)
     }
 
-    private fun find_puzzle(bitmap: Bitmap): Pair<Mat, Mat>? {
 
-
+    private fun find_puzzle(bitmap: Bitmap): Mat? {
         Log.d(TAG, "find_puzzle: $bitmap")
         val rgba = Mat()
         Utils.bitmapToMat(bitmap, rgba)
@@ -322,10 +232,6 @@ class MainActivity : AppCompatActivity() {
             2.0
         )
         Core.bitwise_not(thresh, thresh)
-
-
-        // contours will contain all the contours as vectors with coordinates
-        // hierarchy->
         val contours: MutableList<MatOfPoint> = ArrayList()
         val hierarchy = Mat()
 
@@ -347,18 +253,11 @@ class MainActivity : AppCompatActivity() {
             val approx = MatOfPoint2f()
             Imgproc.approxPolyDP(c2f, approx, 0.02 * peri, true)
 
-            // select biggest 4 angles polygon
             if (approx.toArray().size == 4) {
 
                 val puzzleCnt = approx.toArray()
-                Log.d(TAG, "detectEdges2222: ${puzzleCnt.size}")
-                Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(0)}")
-                Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(1)}")
-                Log.d(TAG, "detectEdges2222: ${puzzleCnt.get(2)}")
-                val puzzle = four_point_transform(rgba, puzzleCnt)
                 val warped = four_point_transform(gray, puzzleCnt)
-                show(puzzle)
-                return Pair(puzzle, warped)
+                return warped
 
             }
         }
@@ -373,74 +272,80 @@ class MainActivity : AppCompatActivity() {
 
     }
 
+    private fun removePatti(warped: Mat): Mat {
+        val stepX = warped.width() / 9
+        val stepY = warped.height() / 9
+        // vertical
+        for (x in 0..9) {
+            val X = (x * stepX).toDouble()
+
+            Imgproc.line(
+                warped,
+                Point(X, 0.0),
+                Point(X, warped.height().toDouble()),
+                Scalar(
+                    255.0,
+                    255.0, 255.0
+                ),
+                3
+            )
+        }
+
+        for (y in 0..9) {
+            val Y = (y * stepY).toDouble()
+
+            Imgproc.line(
+                warped,
+                Point(0.0, Y),
+                Point(warped.width().toDouble(),Y),
+                Scalar(
+                    255.0,
+                    255.0, 255.0
+                ),
+                3
+            )
+        }
+
+
+        return warped
+    }
 
     private fun solve_sudoku_puzzle() {
 
-        val (puzzleImage, warped) = find_puzzle(setScaledBitmap())!!
-        val board = Array(9) { IntArray(9) }
+        var warped = find_puzzle(setScaledBitmap())!!
+        warped = removePatti(warped)
+//        show(warped)
+//        return
         val stepX = warped.width() / 9
         val stepY = warped.height() / 9
-        var cnt = 0
         for (y in 0..8) {
             for (x in 0..8) {
+
                 val startX = x * stepX
                 val startY = y * stepY
                 val endX = (x + 1) * stepX
                 val endY = (y + 1) * stepY
 
-
-                var roi: Rect? = Rect(
+                Log.d(TAG, "solution: $startX $startY $endX $endY ")
+                val roi: Rect? = Rect(
                     Point(startX.toDouble(), startY.toDouble()), Point(
                         endX.toDouble(),
                         endY.toDouble()
                     )
                 )
-                val cell = Mat(warped, roi)
+                val digit = Mat(warped, roi)
 
-                val digit = extract_digit(cell)
+                if (y == 0 && x == 0) {
+                    val resultBitmap =
+                        Bitmap.createBitmap(digit.cols(), digit.rows(), Bitmap.Config.ARGB_8888)
 
-                if (digit != null) {
-                    Log.d(TAG, "solve_sudoku_puzzle: gagan")
+                    Utils.matToBitmap(digit, resultBitmap)
+                    show(digit)
 
-                    cnt = cnt + 1
-                    val roi = Mat()
-                    Imgproc.resize(digit, roi, Size(28.0, 28.0))
-
-
-                    val bitmap =
-                        Bitmap.createBitmap(roi.cols(), roi.rows(), Bitmap.Config.ARGB_8888)
-
-                    Utils.matToBitmap(roi, bitmap)
-
-
-                    if ((bitmap != null) && (digitClassifier.isInitialized)) {
-                        digitClassifier
-                            .classifyAsync(bitmap)
-                            .addOnSuccessListener { resultText ->
-
-
-                                Log.d(TAG, "solve_sudoku_puzzle: $resultText")
-
-                            }
-                            .addOnFailureListener { e ->
-                                Log.e(TAG, "Error classifying drawing.", e)
-                            }
-                    }
-
-
-                } else {
-                    Log.d(TAG, "solve_sudoku_puzzle: hello")
+                    return
                 }
             }
         }
-
-//        for (row in 0 until board.size) {
-//            for (col in 0 until board[row].size) {
-//
-//                print(board[row][col].toString() + "\t")
-//            }
-//            println()
-//        }
     }
 
 
@@ -465,14 +370,6 @@ class MainActivity : AppCompatActivity() {
 
         return BitmapFactory.decodeFile(currentPhotoPath, bmOptions)
 
-    }
-
-    private fun galleryAddPic() {
-        Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE).also { mediaScanIntent ->
-            val f = File(currentPhotoPath)
-            mediaScanIntent.data = Uri.fromFile(f)
-            sendBroadcast(mediaScanIntent)
-        }
     }
 
 
