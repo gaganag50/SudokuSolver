@@ -12,6 +12,10 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.FileProvider
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.TextRecognizer
 import kotlinx.android.synthetic.main.activity_main.*
 import org.opencv.android.OpenCVLoader
 import org.opencv.android.Utils
@@ -28,7 +32,6 @@ class MainActivity : AppCompatActivity() {
 
 
     val CAMERA_REQUEST_CODE = 0
-    private var digitClassifier = DigitClassifier(this)
 
     private fun dispatchTakePictureIntent() {
         Intent(MediaStore.ACTION_IMAGE_CAPTURE).also { takePictureIntent ->
@@ -66,15 +69,8 @@ class MainActivity : AppCompatActivity() {
         cameraButton.setOnClickListener { dispatchTakePictureIntent() }
 
 
-        digitClassifier
-            .initialize()
-            .addOnFailureListener { e -> Log.e(TAG, "Error to setting up digit classifier.", e) }
     }
 
-    override fun onDestroy() {
-        digitClassifier.close()
-        super.onDestroy()
-    }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
@@ -297,7 +293,7 @@ class MainActivity : AppCompatActivity() {
             Imgproc.line(
                 warped,
                 Point(0.0, Y),
-                Point(warped.width().toDouble(),Y),
+                Point(warped.width().toDouble(), Y),
                 Scalar(
                     255.0,
                     255.0, 255.0
@@ -335,17 +331,42 @@ class MainActivity : AppCompatActivity() {
                 )
                 val digit = Mat(warped, roi)
 
-                if (y == 0 && x == 0) {
-                    val resultBitmap =
-                        Bitmap.createBitmap(digit.cols(), digit.rows(), Bitmap.Config.ARGB_8888)
+                val resultBitmap =
+                    Bitmap.createBitmap(digit.cols(), digit.rows(), Bitmap.Config.ARGB_8888)
 
-                    Utils.matToBitmap(digit, resultBitmap)
-                    show(digit)
+                Utils.matToBitmap(digit, resultBitmap)
+                runTextRecognition(resultBitmap)
 
-                    return
-                }
+
             }
         }
+    }
+    private fun runTextRecognition(mSelectedImage: Bitmap) {
+        val image: InputImage = InputImage.fromBitmap(mSelectedImage, 0)
+        val recognizer: TextRecognizer = TextRecognition.getClient()
+        recognizer.process(image)
+            .addOnSuccessListener { texts ->
+                val s = processTextRecognitionResult(texts)
+                Log.d("gagan", "text is: $s")
+            }
+
+
+            .addOnFailureListener { e -> // Task failed with an exception
+                e.printStackTrace()
+                Log.d("gagan", "text is: not found")
+
+            }
+    }
+
+
+
+    private fun processTextRecognitionResult(texts: Text): String? {
+        val blocks: List<Text.TextBlock> = texts.textBlocks
+        if (blocks.isEmpty()) {
+            return null
+        }
+        Log.d(TAG, "gagan: ${blocks.size}")
+        return blocks[0].text
     }
 
 
